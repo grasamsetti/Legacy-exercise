@@ -97,7 +97,13 @@ public class JPhotoFrame extends JFrame
     protected JPhotoExifDialog exifDialog = null;
     protected JFrame helpFrame = null;
     protected File photoDirectory = null;
-    
+    // decoupled slideshow starter allowing testing/mocking
+    protected SlideShowStarter slideShowStarter = null;
+    // decoupled fullview starter for easier testing/sensing
+    protected FullViewStarter fullViewStarter = null;
+    // Dialog service for showing messages (injectable for tests/sensing)
+    protected DialogService dialogService = null;
+
     protected static HashMap allFrames = new HashMap();
     
     protected JPhotoFrame() throws Exception {
@@ -208,6 +214,11 @@ public class JPhotoFrame extends JFrame
         setFrameIcon();
         allFrames.put(frameName, this);
         setVisible(true);
+
+        // initialize default starters and services (can be overridden for tests)
+        this.slideShowStarter = new DefaultSlideShowStarter();
+        this.fullViewStarter = new DefaultFullViewStarter();
+        this.dialogService = new DefaultDialogService();
 
         Object[] options = {
                 "Open Existing Album",
@@ -890,32 +901,10 @@ public class JPhotoFrame extends JFrame
 
     /** Fullscreen view */
     public void startFullView() {
-        if (list.getSelectedIndex()>=0) {
-            JPhoto photo = (JPhoto)photos.getElementAt(list.getSelectedIndex());
-            if (photo.getAlbumLink()!=null) {
-                // It is a link to another album, start new instance
-                String newFile = photo.getFullAlbumLink();
-                if (!showExistingFrame(newFile)) {
-                    JPhotoFrame newFrame = null;
-                    try {
-                        newFrame = new JPhotoFrame(newFile, new JPhotoCollection(newFile));
-                        newFrame.setVisible(true);
-                    } catch (Exception e) {
-                        JOptionPane.showMessageDialog(null, "Cannot open "+newFile,
-                                                      APP_NAME, JOptionPane.ERROR_MESSAGE);
-                    }
-                }
-            }
-            else {
-                JPhotoShow show = new JPhotoShow(photos, 0, list);
-                show.setVisible(true);
-            }
-        }
-        else
-            JOptionPane.showMessageDialog(this, "Select a photo to view!",
-                                          APP_NAME, JOptionPane.ERROR_MESSAGE);
+        // delegate behavior to starter for easier testing/decoupling
+        fullViewStarter.startFullView(this, photos, list, list.getSelectedIndex());
     }
-    
+
     public String getFrameName() {
         if (albumFileName==null)
             return "[Unsaved]";
@@ -923,21 +912,9 @@ public class JPhotoFrame extends JFrame
             return albumFileName;
     }
 
-    public boolean showExistingFrame(String frameName) {
-        JPhotoFrame oldOne = (JPhotoFrame)allFrames.get(frameName);
-        if (oldOne!=null) {
-            oldOne.setVisible(true);
-            return true;
-        }
-        return false;
-    }
-    
-    public void toggleView() {
-        int max = splitPane.getWidth() - splitPane.getDividerSize();
-        if (splitPane.getDividerLocation() < max)
-            splitPane.setDividerLocation(max);
-        else
-            splitPane.setDividerLocation(splitPane.getLastDividerLocation());
+    /** Allows injection of a test or alternative FullViewStarter. */
+    public void setFullViewStarter(FullViewStarter starter) {
+        this.fullViewStarter = starter;
     }
     
     /** Single click shows exif, Double click toggles full view
@@ -1068,12 +1045,20 @@ public class JPhotoFrame extends JFrame
     /** extracted from actionPerformed */
     public void startSlideShow() {
         if (photos.getSize() > 0) {
-            JPhotoShow show = new JPhotoShow(photos, 5000, list);
-            show.setVisible(true);
+            // delegate construction/behavior to the injected starter
+            slideShowStarter.start(photos, 5000, list);
+        } else {
+            dialogService.showMessage(this, "No photos to show!", APP_NAME, JOptionPane.ERROR_MESSAGE);
         }
-        else {
-            JOptionPane.showMessageDialog(this, "No photos to show!",
-                                          APP_NAME, JOptionPane.ERROR_MESSAGE);
-        }
+    }
+
+    /** Allows injection of a DialogService to capture/redirect messages for tests. */
+    public void setDialogService(DialogService service) {
+        this.dialogService = service;
+    }
+
+    /** Allows injection of a test or alternative SlideShowStarter. */
+    public void setSlideShowStarter(SlideShowStarter starter) {
+        this.slideShowStarter = starter;
     }
 }
